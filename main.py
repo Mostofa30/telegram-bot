@@ -3,7 +3,7 @@ import requests
 from telebot import TeleBot, types
 
 # ==================== CONFIGURATION ====================
-BOT_TOKEN = "8664893657:AAEXNHTYGWwqEKi-oLOlrYwz7zKEMa0alYE"
+BOT_TOKEN = "8664893657:AAGNQ30eqoOSjDgeGSSlcC39PeBAHOK_FC8"
 NAGORIKPAY_API_KEY = "vMfzKDGAq6macAaJsYRztUjeibJMHTwScELb9vWEI8h6hwRL1X"
 
 # এডমিন আইডি (⚠️ এখানে আপনার আসল Telegram Numeric ID বসান, যেমন: 123456789)
