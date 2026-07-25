@@ -5,23 +5,26 @@ from flask import Flask, request, jsonify
 from telebot import TeleBot, types
 
 # ==================== CONFIGURATION ====================
-BOT_TOKEN = "8664893657:AAEXNHTYGWwqEKi-oLOlrYwz7zKEMa0alYE"
-NAGORIKPAY_API_KEY = "vMfzKDGAq6macAaJsYRztUjeibJMHTwScELb9vWEI8h6hwRL1X"
+BOT_TOKEN = "8664893657:AAEpPj25Xgosp8I9UijRPh2Gye_uLOmihZg"
+NAGORIKPAY_API_KEY = "YdYnZbt7eYkjCoorVKbRiCmqNkTFwY0KfosZbfBnyXnMFRWG93"
+
+# আপনার টেলিগ্রাম নিউমেরিক আইডি (Admin ID)
 ADMIN_ID = 8801949677905 
 
-# Railway অটোমেটিক URL পার্স করবে, তাই এখানে কিছু পরিবর্তন করার প্রয়োজন নেই
-RAILWAY_URL = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
+# Render/Railway ইত্যাদির Public Domain পেতে
+PUBLIC_DOMAIN = os.environ.get("RENDER_EXTERNAL_HOSTNAME") or os.environ.get("RAILWAY_PUBLIC_DOMAIN", "")
 
 bot = TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Data Store
+# Data Store (In-Memory Database)
 user_wallets = {}   # {user_id: balance}
 user_states = {}    # {user_id: {"state": ...}}
 user_orders = {}    
 order_counter = 1000
 
+# ==================== ALL PACKAGES & PRICES ====================
 PACKAGES = {
     "p1": {"name": "WEEKLY", "price": 158},
     "p2": {"name": "MONTHLY", "price": 790},
@@ -43,8 +46,22 @@ PACKAGES = {
     "p17": {"name": "2530 Diamond", "price": 1610},
     "p18": {"name": "5060 Diamond", "price": 3220},
     "p19": {"name": "10120 Diamond", "price": 6440},
+    
+    "p20": {"name": "1X Weekly Lite", "price": 45},
+    "p21": {"name": "2X Weekly Lite", "price": 90},
+    "p22": {"name": "3X Weekly Lite", "price": 135},
+    "p23": {"name": "5X Weekly Lite", "price": 225},
+    
+    "p24": {"name": "Level Up Package - Level 6", "price": 43},
+    "p25": {"name": "Level Up Package - Level 10", "price": 75},
+    "p26": {"name": "Level Up Package - Level 15", "price": 75},
+    "p27": {"name": "Level Up Package - Level 20", "price": 75},
+    "p28": {"name": "Level Up Package - Level 25", "price": 75},
+    "p29": {"name": "Level Up Package - Level 30", "price": 105},
+    "p30": {"name": "Full Level Up (1270 Diamond)", "price": 448},
 }
 
+# ==================== UID VERIFICATION FUNCTION ====================
 def verify_ff_uid(uid):
     if not uid.isdigit() or len(uid) < 7 or len(uid) > 12:
         return None
@@ -60,16 +77,18 @@ def verify_ff_uid(uid):
         pass
     return f"Player_{uid[-4:]}"
 
+# ==================== NAGORIKPAY API FUNCTION ====================
 def create_nagorikpay_charge(amount, user_id, purpose="Add Balance"):
     url = "https://secure-pay.nagorikpay.com/api/payment/create"
+    
+    # Header-এ API Key দেওয়ার অফিশিয়াল নিয়ম
     headers = {
         "API-KEY": NAGORIKPAY_API_KEY,
         "Content-Type": "application/json"
     }
     
-    # Railway URL থেকে ডায়নামিক ওয়েবহুক লিংক তৈরি
-    domain = f"https://{RAILWAY_URL}" if RAILWAY_URL else "https://t.me/FF_TOPUP_SHOP_bot"
-    webhook_endpoint = f"{domain}/nagorikpay_webhook" if RAILWAY_URL else "https://t.me/FF_TOPUP_SHOP_bot"
+    domain = f"https://{PUBLIC_DOMAIN}" if PUBLIC_DOMAIN else "https://t.me/FF_TOPUP_SHOP_bot"
+    webhook_endpoint = f"{domain}/nagorikpay_webhook" if PUBLIC_DOMAIN else "https://t.me/FF_TOPUP_SHOP_bot"
 
     payload = {
         "amount": str(amount),
@@ -95,10 +114,10 @@ def create_nagorikpay_charge(amount, user_id, purpose="Add Balance"):
         logging.error(f"NagorikPay Exception: {e}")
         return None
 
-# ==================== NAGORIKPAY AUTO WEBHOOK ROUTE ====================
+# ==================== AUTO WEBHOOK ROUTE ====================
 @app.route('/nagorikpay_webhook', methods=['POST'])
 def nagorikpay_webhook():
-    """পেমেন্ট সফল হলে NagorikPay ওয়েবসাইট এই ফাংশনটিকে হিট করবে"""
+    """পেমেন্ট সফল হলে NagorikPay এই এন্ডপয়েন্টে নোটিফিকেশন পাঠাবে"""
     try:
         data = request.json or request.form
         logging.info(f"Webhook Received: {data}")
@@ -116,34 +135,34 @@ def nagorikpay_webhook():
             amount = float(data.get("amount", 0))
             
             if user_id and amount > 0:
-                # ১. ওয়ালেটে ব্যালেন্স যোগ
+                # ইউজারের ওয়ালেটে ব্যালেন্স অ্যাড
                 user_wallets[user_id] = user_wallets.get(user_id, 0.0) + amount
                 new_bal = user_wallets[user_id]
                 
-                # ২. ইউজারকে অটোমেটিক কনফার্মেশন মেসেজ পাঠানো
+                # ইউজারকে অটোমেটিক মেসেজ
                 bot.send_message(
                     user_id,
                     f"🎉 **পেমেন্ট সফল হয়েছে!**\n\n"
                     f"💳 **পরিমাণ:** ৳{amount:.2f}\n"
                     f"💰 **বর্তমান ওয়ালেট ব্যালেন্স:** ৳{new_bal:.2f}\n\n"
-                    f"ধন্যবাদ! এখন 'Shop Now' থেকে টপ-আপ করতে পারেন।",
+                    f"ধন্যবাদ! এখন 'Shop Now' থেকে টপ-আপ অর্ডার করতে পারেন।",
                     parse_mode="Markdown"
                 )
                 
-                # ৩. এডমিনকে নোটিফিকেশন দেওয়া
+                # এডমিন নোটিফিকেশন
                 try:
-                    bot.send_message(ADMIN_ID, f"🔔 **Auto-Payment Alert:** User `{user_id}` added ৳{amount} via NagorikPay!")
+                    bot.send_message(ADMIN_ID, f"🔔 **Auto-Payment:** User `{user_id}` added ৳{amount} via NagorikPay!")
                 except Exception:
                     pass
                     
-                return jsonify({"status": "success", "message": "Balance Added Automatically"}), 200
+                return jsonify({"status": "success", "message": "Balance Added"}), 200
 
     except Exception as e:
-        logging.error(f"Webhook Handling Error: {e}")
+        logging.error(f"Webhook Error: {e}")
         
     return jsonify({"status": "failed"}), 400
 
-# ==================== TELEGRAM BOT WEBHOOK ROUTE ====================
+# ==================== TELEGRAM BOT ROUTING ====================
 @app.route('/' + BOT_TOKEN, methods=['POST'])
 def getMessage():
     json_string = request.stream.read().decode('utf-8')
@@ -154,12 +173,12 @@ def getMessage():
 @app.route("/")
 def webhook():
     bot.remove_webhook()
-    if RAILWAY_URL:
-        bot.set_webhook(url=f"https://{RAILWAY_URL}/{BOT_TOKEN}")
-        return f"Bot is running with Webhook on https://{RAILWAY_URL}", 200
-    return "Bot is running!", 200
+    if PUBLIC_DOMAIN:
+        bot.set_webhook(url=f"https://{PUBLIC_DOMAIN}/{BOT_TOKEN}")
+        return f"Bot active with Webhook: https://{PUBLIC_DOMAIN}", 200
+    return "Bot Service Running!", 200
 
-# ==================== TELEGRAM HANDLERS ====================
+# ==================== BOT HANDLERS ====================
 def show_main_menu(chat_id, user_id):
     balance = user_wallets.get(user_id, 0.0)
     text = (
